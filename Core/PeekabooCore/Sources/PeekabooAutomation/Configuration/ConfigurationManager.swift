@@ -408,7 +408,8 @@ public final class ConfigurationManager: @unchecked Sendable {
             return token
         }
 
-        // 2. Credentials file
+        // 2. Credentials file (load from disk to ensure fresh data)
+        self.loadCredentials()
         if let credValue = credentials["OPENAI_API_KEY"] {
             return credValue
         }
@@ -433,7 +434,8 @@ public final class ConfigurationManager: @unchecked Sendable {
             return token
         }
 
-        // 2. Credentials file
+        // 2. Credentials file (load from disk to ensure fresh data)
+        self.loadCredentials()
         if let credValue = credentials["ANTHROPIC_API_KEY"] {
             return credValue
         }
@@ -455,7 +457,8 @@ public final class ConfigurationManager: @unchecked Sendable {
             }
         }
 
-        // 2. Credentials file
+        // 2. Credentials file (load from disk to ensure fresh data)
+        self.loadCredentials()
         for key in ["GEMINI_API_KEY", "GOOGLE_API_KEY"] {
             if let credValue = credentials[key] {
                 return credValue
