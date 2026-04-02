@@ -48,7 +48,7 @@ let package = Package(
         .package(path: "../PeekabooExternalDependencies"),
         .package(path: "../PeekabooVisualizer"),
         .package(path: "../../Tachikoma"),
-        .package(url: "https://github.com/apple/swift-configuration", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-configuration", from: "1.2.0"),
     ],
     targets: [
         .target(

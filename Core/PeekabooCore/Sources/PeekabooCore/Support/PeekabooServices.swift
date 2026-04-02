@@ -398,6 +398,9 @@ public final class PeekabooServices {
 
         // Reload configuration to get latest API keys
         _ = self.configuration.loadConfiguration()
+        
+        // Load custom providers from config.json to make them available to ProviderFactory
+        Tachikoma.CustomProviderRegistry.shared.loadFromProfile()
 
         // Check for available API keys
         let hasOpenAI = self.configuration.getOpenAIAPIKey() != nil && !self.configuration.getOpenAIAPIKey()!.isEmpty
