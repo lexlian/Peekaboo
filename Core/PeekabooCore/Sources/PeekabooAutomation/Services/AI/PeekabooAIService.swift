@@ -16,6 +16,10 @@ public final class PeekabooAIService {
     public init(configuration: ConfigurationManager = .shared) {
         self.configuration = configuration
         _ = configuration.loadConfiguration()
+        
+        // Load custom providers from config.json to make them available
+        Tachikoma.CustomProviderRegistry.shared.loadFromProfile()
+        
         self.resolvedModels = Self.resolveAvailableModels(configuration: configuration)
         self.defaultModel = self.resolvedModels.first ?? .openai(.gpt51)
         // Rely on TachikomaConfiguration to load from env/credentials (profile set at startup)
@@ -137,6 +141,17 @@ public final class PeekabooAIService {
         if let parsed = AIProviderParser.parse(entry) {
             let provider = parsed.provider.lowercased()
             let modelString = parsed.model
+            
+            // Check if this is a custom provider from CustomProviderRegistry
+            if let customProvider = Tachikoma.CustomProviderRegistry.shared.get(provider) {
+                // This is a custom provider, create appropriate compatible model
+                switch customProvider.kind {
+                case .anthropic:
+                    return .anthropicCompatible(modelId: modelString, baseURL: customProvider.baseURL)
+                case .openai:
+                    return .openaiCompatible(modelId: modelString, baseURL: customProvider.baseURL)
+                }
+            }
 
             let loose = LanguageModel.parse(from: modelString)
 
@@ -182,6 +197,22 @@ public final class PeekabooAIService {
             .compactMap { self.parseProviderEntry($0) }
 
         if !parsed.isEmpty { return parsed }
+
+        // Check for custom providers
+        let customProviders = Tachikoma.CustomProviderRegistry.shared.list()
+        if !customProviders.isEmpty {
+            // Use first custom provider's model or default model
+            for (_, provider) in customProviders {
+                if let firstModel = provider.models.first {
+                    switch provider.kind {
+                    case .anthropic:
+                        return [.anthropicCompatible(modelId: firstModel.value, baseURL: provider.baseURL)]
+                    case .openai:
+                        return [.openaiCompatible(modelId: firstModel.value, baseURL: provider.baseURL)]
+                    }
+                }
+            }
+        }
 
         // Fallback: prefer Anthropic if a key is present, else OpenAI
         if let key = configuration.getAnthropicAPIKey(), !key.isEmpty {
