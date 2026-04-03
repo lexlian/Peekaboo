@@ -306,6 +306,11 @@ extension AgentCommand {
             return
         }
 
+        guard self.hasConfiguredAIProvider(configuration: services.configuration) else {
+            self.emitAgentUnavailableMessage()
+            return
+        }
+
         let terminalCapabilities = TerminalDetector.detectCapabilities()
         if self.debugTerminal {
             self.printTerminalDetectionDebug(terminalCapabilities, actualMode: self.outputMode)
@@ -434,7 +439,8 @@ extension AgentCommand {
             return false
         }
 
-        let hasCredential = await peekabooAgent.maskedApiKey != nil
+        let maskedKey = await peekabooAgent.maskedApiKey
+        let hasCredential = maskedKey != nil
         if !hasCredential {
             self.emitAgentUnavailableMessage()
         }
@@ -934,14 +940,15 @@ extension AgentCommand {
         let hasOpenAI = configuration.getOpenAIAPIKey()?.isEmpty == false
         let hasAnthropic = configuration.getAnthropicAPIKey()?.isEmpty == false
         let hasGemini = configuration.getGeminiAPIKey()?.isEmpty == false
-        return hasOpenAI || hasAnthropic || hasGemini
+        let hasCustomProvider = !configuration.listCustomProviders().isEmpty
+        return hasOpenAI || hasAnthropic || hasGemini || hasCustomProvider
     }
 
     private func emitAgentUnavailableMessage() {
         if self.jsonOutput {
             let error = [
                 "success": false,
-                "error": "Agent service not available. Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY."
+                "error": "Agent service not available. Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, or configure a custom provider."
             ] as [String: Any]
             if let jsonData = try? JSONSerialization.data(withJSONObject: error, options: .prettyPrinted),
                let jsonString = String(data: jsonData, encoding: .utf8) {
@@ -952,7 +959,7 @@ extension AgentCommand {
         } else {
             let errorPrefix = [
                 "\(TerminalColor.red)Error: Agent service not available.",
-                " Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY."
+                " Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, or configure a custom provider."
             ].joined()
             let errorMessageLine = [errorPrefix, "\(TerminalColor.reset)"].joined()
             print(errorMessageLine)
@@ -982,6 +989,12 @@ extension AgentCommand {
             if Self.supportedGoogleInputs.contains(model) {
                 return .google(.gemini3Flash)
             }
+        case .anthropicCompatible, .openaiCompatible:
+            // Allow custom compatible providers (e.g., bailian/qwen3.5-plus)
+            return parsed
+        case .custom:
+            // Custom providers from config.json - check if they exist
+            return parsed
         default:
             break
         }
@@ -1032,7 +1045,8 @@ extension AgentCommand {
         let openAIModels = Self.supportedOpenAIInputs.map(\.modelId)
         let anthropicModels = Self.supportedAnthropicInputs.map(\.modelId)
         let googleModels = Self.supportedGoogleInputs.map(\.userFacingModelId)
-        return (openAIModels + anthropicModels + googleModels).sorted().joined(separator: ", ")
+        let builtinModels = (openAIModels + anthropicModels + googleModels).sorted()
+        return builtinModels.joined(separator: ", ") + " (or custom provider like bailian/qwen3.5-plus)"
     }
 
     @MainActor

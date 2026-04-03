@@ -63,11 +63,13 @@ public final class PeekabooAgentService: AgentServiceProtocol {
             let config = TachikomaConfiguration.current
 
             // Determine the provider based on the model
-            let apiKey: String? = switch model {
+            let apiKey = switch model {
             case .openai:
                 config.getAPIKey(for: .openai)
             case .anthropic:
                 config.getAPIKey(for: .anthropic)
+                    ?? config.getAPIKey(for: .custom("anthropic_compatible"))
+                    ?? config.getAPIKey(for: .custom("openai_compatible"))
             case .google:
                 config.getAPIKey(for: .google)
             case .mistral:
@@ -89,9 +91,13 @@ public final class PeekabooAgentService: AgentServiceProtocol {
             case .replicate:
                 config.getAPIKey(for: .custom("replicate"))
             case .openaiCompatible, .anthropicCompatible:
-                nil // Custom endpoints may have keys embedded
+                // Custom compatible providers store API keys under custom keys
+                config.getAPIKey(for: .custom("anthropic_compatible"))
+                    ?? config.getAPIKey(for: .custom("openai_compatible"))
             case .custom:
-                nil // Custom providers handle their own keys
+                // Custom providers (including bailian, etc.) store API keys in compatible provider keys
+                config.getAPIKey(for: .custom("anthropic_compatible"))
+                    ?? config.getAPIKey(for: .custom("openai_compatible"))
             }
 
             // Mask the API key

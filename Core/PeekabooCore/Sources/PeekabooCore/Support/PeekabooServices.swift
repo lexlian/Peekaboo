@@ -399,16 +399,27 @@ public final class PeekabooServices {
         // Reload configuration to get latest API keys
         _ = self.configuration.loadConfiguration()
         
+        // Ensure Tachikoma uses the correct profile directory for custom providers
+        TachikomaConfiguration.profileDirectoryName = ".peekaboo"
+        
         // Load custom providers from config.json to make them available to ProviderFactory
         Tachikoma.CustomProviderRegistry.shared.loadFromProfile()
+        
+        // Set custom provider API keys in TachikomaConfiguration so maskedApiKey can find them
+        let customProviders = Tachikoma.CustomProviderRegistry.shared.list()
+        for (_, provider) in customProviders {
+            let configKey = provider.kind == .anthropic ? "anthropic_compatible" : "openai_compatible"
+            TachikomaConfiguration.current.setAPIKey(provider.apiKey, for: configKey)
+        }
 
         // Check for available API keys
         let hasOpenAI = self.configuration.getOpenAIAPIKey() != nil && !self.configuration.getOpenAIAPIKey()!.isEmpty
         let hasAnthropic = self.configuration.getAnthropicAPIKey() != nil && !self.configuration.getAnthropicAPIKey()!
             .isEmpty
         let hasOllama = false
+        let hasCustomProvider = !self.configuration.listCustomProviders().isEmpty
 
-        if hasOpenAI || hasAnthropic || hasOllama {
+        if hasOpenAI || hasAnthropic || hasOllama || hasCustomProvider {
             let agentConfig = self.configuration.getConfiguration()
             let providers = self.configuration.getAIProviders()
             let environmentProviders = EnvironmentVariables.value(for: "PEEKABOO_AI_PROVIDERS")
@@ -599,8 +610,8 @@ extension PeekabooServices {
         let components = sources.providers
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
-        let environmentModel = components.first?.split(separator: "/").last.map(String.init)
-
+        let environmentModel = components.first.map { String($0) }
+        
         let hasConflict = sources.isEnvironmentProvided
             && sources.configuredDefault != nil
             && sources.configuredDefault != environmentModel
