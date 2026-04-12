@@ -1,0 +1,1 @@
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer && rm -rf Apps/CLI/.build && cd Apps/CLI && swift build -c release 2>&1 | tee /tmp/build-xcode.log | tail -150
