@@ -48,6 +48,11 @@ extension ClickCommand: CommanderSignatureProviding {
                     help: "Right-click (secondary click)",
                     long: "right"
                 ),
+                .commandFlag(
+                    "nudgeTextInput",
+                    help: "Enable text input focus nudging (for SwiftUI apps with offset issues)",
+                    long: "nudge-text-input"
+                ),
             ],
             optionGroups: [
                 InteractionTargetOptions.commanderSignature(),

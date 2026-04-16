@@ -157,6 +157,9 @@ struct ClickCommand: ErrorHandlingCommand, OutputFormattable {
     @Flag(help: "Right-click (secondary click)")
     var right = false
 
+    @Flag(help: "Enable text input focus nudging (for SwiftUI apps with offset issues)")
+    var nudgeTextInput = false
+
     @OptionGroup var focusOptions: FocusCommandOptions
     mutating func validate() throws {
         try self.target.validate()
@@ -321,20 +324,22 @@ struct ClickCommand: ErrorHandlingCommand, OutputFormattable {
 
             // Perform the click
             if case .coordinates = clickTarget {
-                // For coordinate clicks, pass nil snapshot ID
+                // For coordinate clicks, pass nil snapshot ID (nudging not applicable)
                 try await AutomationServiceBridge.click(
                     automation: self.services.automation,
                     target: clickTarget,
                     clickType: clickType,
-                    snapshotId: nil
+                    snapshotId: nil,
+                    enableNudging: false
                 )
             } else {
-                // For element-based clicks, pass the snapshot ID
+                // For element-based clicks, pass the snapshot ID and nudging flag
                 try await AutomationServiceBridge.click(
                     automation: self.services.automation,
                     target: clickTarget,
                     clickType: clickType,
-                    snapshotId: activeSnapshotId.isEmpty ? nil : activeSnapshotId
+                    snapshotId: activeSnapshotId.isEmpty ? nil : activeSnapshotId,
+                    enableNudging: self.nudgeTextInput
                 )
             }
 
@@ -476,6 +481,7 @@ extension ClickCommand: CommanderBindableCommand {
         }
         self.double = values.flag("double")
         self.right = values.flag("right")
+        self.nudgeTextInput = values.flag("nudgeTextInput")
         self.focusOptions = try values.makeFocusOptions()
     }
 }

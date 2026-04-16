@@ -290,7 +290,8 @@ extension ProcessService {
         try await uiAutomationService.click(
             target: clickTarget,
             clickType: clickType,
-            snapshotId: effectiveSnapshotId)
+            snapshotId: effectiveSnapshotId,
+            enableNudging: false)
 
         return StepExecutionResult(
             output: .success("Clicked successfully"),

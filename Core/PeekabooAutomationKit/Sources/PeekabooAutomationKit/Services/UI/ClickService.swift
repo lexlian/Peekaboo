@@ -50,19 +50,19 @@ public final class ClickService {
 
     /// Perform a click operation
     @MainActor
-    public func click(target: ClickTarget, clickType: ClickType, snapshotId: String?) async throws {
-        self.logger.debug("Click requested - target: \(String(describing: target)), type: \(clickType)")
+    public func click(target: ClickTarget, clickType: ClickType, snapshotId: String?, enableNudging: Bool = false) async throws {
+        self.logger.debug("Click requested - target: \(String(describing: target)), type: \(clickType), nudging: \(enableNudging)")
 
         do {
             switch target {
             case let .elementId(id):
-                try await self.clickElementById(id: id, clickType: clickType, snapshotId: snapshotId)
+                try await self.clickElementById(id: id, clickType: clickType, snapshotId: snapshotId, enableNudging: enableNudging)
 
             case let .coordinates(point):
                 try await self.performClick(at: point, clickType: clickType)
 
             case let .query(query):
-                try await self.clickElementByQuery(query: query, clickType: clickType, snapshotId: snapshotId)
+                try await self.clickElementByQuery(query: query, clickType: clickType, snapshotId: snapshotId, enableNudging: enableNudging)
             }
         } catch {
             self.logger.error("Click failed: \(error.localizedDescription)")
@@ -72,7 +72,7 @@ public final class ClickService {
 
     // MARK: - Private Methods
 
-    private func clickElementById(id: String, clickType: ClickType, snapshotId: String?) async throws {
+    private func clickElementById(id: String, clickType: ClickType, snapshotId: String?, enableNudging: Bool = false) async throws {
         // Get element from snapshot
         if let snapshotId,
            let detectionResult = try? await snapshotManager.getDetectionResult(snapshotId: snapshotId),
@@ -82,10 +82,12 @@ public final class ClickService {
             let center = CGPoint(x: element.bounds.midX, y: element.bounds.midY)
             let adjusted = try await self.resolveAdjustedPoint(center, snapshotId: snapshotId)
             try await self.performClick(at: adjusted, clickType: clickType)
-            try await self.nudgeTextInputFocusIfNeeded(
-                afterClickAt: adjusted,
-                clickType: clickType,
-                expectedIdentifier: element.attributes["identifier"])
+            if enableNudging {
+                try await self.nudgeTextInputFocusIfNeeded(
+                    afterClickAt: adjusted,
+                    clickType: clickType,
+                    expectedIdentifier: element.attributes["identifier"])
+            }
             self.logger.debug("Clicked element \(id) at (\(adjusted.x), \(adjusted.y))")
         } else {
             throw NotFoundError.element(id)
@@ -93,7 +95,7 @@ public final class ClickService {
     }
 
     @MainActor
-    private func clickElementByQuery(query: String, clickType: ClickType, snapshotId: String?) async throws {
+    private func clickElementByQuery(query: String, clickType: ClickType, snapshotId: String?, enableNudging: Bool = false) async throws {
         // First try to find in snapshot data if available (much faster)
         var found = false
         var clickFrame: CGRect?
@@ -127,10 +129,12 @@ public final class ClickService {
                 center,
                 snapshotId: resolvedElement != nil ? snapshotId : nil)
             try await self.performClick(at: adjusted, clickType: clickType)
-            try await self.nudgeTextInputFocusIfNeeded(
-                afterClickAt: adjusted,
-                clickType: clickType,
-                expectedIdentifier: resolvedElement?.attributes["identifier"])
+            if enableNudging {
+                try await self.nudgeTextInputFocusIfNeeded(
+                    afterClickAt: adjusted,
+                    clickType: clickType,
+                    expectedIdentifier: resolvedElement?.attributes["identifier"])
+            }
             self.logger.debug("Clicked element matching '\(query)' at (\(adjusted.x), \(adjusted.y))")
         } else {
             throw NotFoundError.element(query)
@@ -170,19 +174,37 @@ public final class ClickService {
             return
         }
 
-        // SwiftUI can report text input frames with a stable vertical offset (commonly ~28-32px).
-        // Retry a handful of small Y nudges to land inside the actual editable region.
-        let nudges: [CGFloat] = [-29, -24, -34, -20]
+        // Capture frontmost app PID to detect window switches
+        guard let frontAppPID = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
 
-        for dy in nudges {
+        // SwiftUI can report text input frames with a stable vertical offset (commonly ~28-32px).
+        // Retry a small number of Y nudges to land inside the actual editable region.
+        // Reduced from 4 to 2 attempts to minimize latency and window-switching risk.
+        let nudges: [CGFloat] = [-29, -24]
+
+        for (index, dy) in nudges.enumerated() {
+            // Verify window hasn't changed before each nudge (except first)
+            if index > 0 {
+                if let currentPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                   currentPID != frontAppPID
+                {
+                    self.logger.debug("Nudge cancelled: window switched from PID \(frontAppPID) to \(currentPID)")
+                    return
+                }
+            }
+
             let candidate = CGPoint(x: point.x, y: point.y + dy)
             try await self.performClick(at: candidate, clickType: .single)
-            try await Task.sleep(nanoseconds: 60_000_000) // 60ms
+            // Reduced from 60ms to 30ms to minimize latency
+            try await Task.sleep(nanoseconds: 30_000_000)
 
             if self.isFocusedTextInput(expectedIdentifier: normalizedExpectedIdentifier) {
+                self.logger.debug("Text input focus achieved after \(index + 1) nudge(s)")
                 return
             }
         }
+
+        self.logger.debug("Text input focus nudging completed without success (\(nudges.count) attempts)")
     }
 
     private func isFocusedTextInput(expectedIdentifier: String?) -> Bool {

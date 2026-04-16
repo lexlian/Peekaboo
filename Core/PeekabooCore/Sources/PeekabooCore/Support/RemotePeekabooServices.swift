@@ -100,8 +100,8 @@ public final class RemoteUIAutomationService: DetectElementsRequestTimeoutAdjust
             requestTimeoutSec: requestTimeoutSec)
     }
 
-    public func click(target: ClickTarget, clickType: ClickType, snapshotId: String?) async throws {
-        try await self.client.click(target: target, clickType: clickType, snapshotId: snapshotId)
+    public func click(target: ClickTarget, clickType: ClickType, snapshotId: String?, enableNudging: Bool = false) async throws {
+        try await self.client.click(target: target, clickType: clickType, snapshotId: snapshotId, enableNudging: enableNudging)
     }
 
     public func type(

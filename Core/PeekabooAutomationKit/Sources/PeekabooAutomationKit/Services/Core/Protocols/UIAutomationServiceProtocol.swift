@@ -44,7 +44,8 @@ public protocol UIAutomationServiceProtocol: Sendable {
     ///   - target: Click target (element ID, coordinates, or query)
     ///   - clickType: Type of click (single, double, right)
     ///   - snapshotId: Snapshot ID for element resolution
-    func click(target: ClickTarget, clickType: ClickType, snapshotId: String?) async throws
+    ///   - enableNudging: Enable text input focus nudging for SwiftUI apps (default: false)
+    func click(target: ClickTarget, clickType: ClickType, snapshotId: String?, enableNudging: Bool) async throws
 
     /// Type text at current focus or specific element
     /// - Parameters:

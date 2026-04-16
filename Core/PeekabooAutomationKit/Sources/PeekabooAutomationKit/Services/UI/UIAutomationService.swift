@@ -312,9 +312,9 @@ extension UIAutomationService {
      * - Important: Requires Accessibility permission for element-based clicking
      * - Note: Visual feedback is automatically shown if visualizer is connected
      */
-    public func click(target: ClickTarget, clickType: ClickType, snapshotId: String?) async throws {
-        self.logger.debug("Delegating click to ClickService")
-        try await self.clickService.click(target: target, clickType: clickType, snapshotId: snapshotId)
+    public func click(target: ClickTarget, clickType: ClickType, snapshotId: String?, enableNudging: Bool = false) async throws {
+        self.logger.debug("Delegating click to ClickService, nudging: \(enableNudging)")
+        try await self.clickService.click(target: target, clickType: clickType, snapshotId: snapshotId, enableNudging: enableNudging)
 
         // Show visual feedback if available
         if let clickPoint = try await getClickPoint(for: target, snapshotId: snapshotId) {
