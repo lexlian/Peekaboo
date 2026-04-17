@@ -1,4 +1,7 @@
 # Peekaboo 🫣 - Mac automation that sees the screen and does the clicks.
+Forked by Lex Lian, fixed major issues:
+- Congiguration not completed to support customer provider, etc. 
+- Click is slow due to 'nudge' for input text field
 
 ![Peekaboo Banner](assets/peekaboo.png)
 
