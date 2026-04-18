@@ -55,6 +55,11 @@ extension SeeCommand: CommanderSignatureProviding {
                     help: "Overall timeout in seconds (default: 20, or 60 when --analyze is set)",
                     long: "timeout-seconds"
                 ),
+                .commandOption(
+                    "retainDays",
+                    help: "Override screenshot retention period for cleanup (days, default: 3)",
+                    long: "retain-days"
+                ),
             ],
             flags: [
                 .commandFlag(
@@ -71,6 +76,11 @@ extension SeeCommand: CommanderSignatureProviding {
                     "noWebFocus",
                     help: "Skip web-content focus fallback when no text fields are detected",
                     long: "no-web-focus"
+                ),
+                .commandFlag(
+                    "save",
+                    help: "Save screenshot to configured default location (use with --annotate to save annotated version)",
+                    long: "save"
                 ),
             ]
         )

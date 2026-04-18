@@ -113,6 +113,13 @@ struct SeeCommand: ApplicationResolvable, ErrorHandlingCommand, RuntimeOptionsCo
 
     @Flag(help: "Skip web-content focus fallback when no text fields are detected")
     var noWebFocus = false
+
+    @Flag(help: "Save screenshot to configured default location (use with --annotate to save annotated version)")
+    var save = false
+
+    @Option(help: "Override screenshot retention period for cleanup (days, default: 3)")
+    var retainDays: Int?
+
     @RuntimeStorage private var runtime: CommandRuntime?
     var runtimeOptions = CommandRuntimeOptions()
 
@@ -192,6 +199,14 @@ struct SeeCommand: ApplicationResolvable, ErrorHandlingCommand, RuntimeOptionsCo
 
     private func runImpl(startTime: Date, logger: Logger) async throws {
         do {
+            // Show migration notice on first run
+            self.showMigrationNoticeIfNeeded()
+            
+            // Clean up old screenshots
+            let retentionDays = ConfigurationManager.shared.getScreenshotRetentionDays(cliValue: self.retainDays)
+            logger.debug("Cleanup retention: retainDays=\(self.retainDays ?? -1), using=\(retentionDays) days")
+            self.cleanupOldScreenshots(retentionDays: retentionDays)
+            
             // Check permissions
             logger.verbose("Checking screen recording permissions", category: "Permissions")
             try await requireScreenRecordingPermission(services: self.services)
@@ -210,9 +225,12 @@ struct SeeCommand: ApplicationResolvable, ErrorHandlingCommand, RuntimeOptionsCo
             var annotatedPath: String?
             if self.annotate {
                 logger.operationStart("generate_annotations")
+                // Determine if we should save user-facing screenshot
+                let explicitSave = self.path != nil || self.save
                 annotatedPath = try await self.generateAnnotatedScreenshot(
                     snapshotId: captureResult.snapshotId,
-                    originalPath: captureResult.screenshotPath
+                    originalPath: captureResult.screenshotPath,
+                    userRequestedPath: explicitSave ? captureResult.screenshotPath : nil
                 )
                 if let annotatedPath,
                    annotatedPath != captureResult.screenshotPath {
@@ -301,9 +319,10 @@ struct SeeCommand: ApplicationResolvable, ErrorHandlingCommand, RuntimeOptionsCo
         let captureContext = try await self.resolveCaptureContext()
         let captureResult = captureContext.captureResult
 
-        // Save screenshot
+        // Save screenshot only if user explicitly requested it
+        let explicitSave = self.path != nil || self.save
         self.logger.startTimer("file_write")
-        let outputPath = try saveScreenshot(captureResult.imageData)
+        let outputPath = try saveScreenshot(captureResult.imageData, explicitSave: explicitSave) ?? ""
         self.logger.stopTimer("file_write")
 
         // Create window context from capture metadata
@@ -793,6 +812,112 @@ extension SeeCommand {
             return results[0]
         }
     }
+
+    /// Show migration notice on first run after upgrade
+    private func showMigrationNoticeIfNeeded() {
+        let noticeFlagPath = NSString(string: "~/.peekaboo/.screenshot_migration_notice_shown").expandingTildeInPath
+        guard !FileManager.default.fileExists(atPath: noticeFlagPath) else {
+            return  // Already shown
+        }
+
+        print("""
+
+        ⚠️  Peekaboo Screenshot Behavior Changed
+
+        To save disk space, screenshots are no longer automatically saved.
+
+        Changes:
+          • Screenshots now saved only when --path or --save is specified
+          • Old screenshots automatically cleaned up after 3 days
+          • Internal snapshots (for click/agent) still work as before
+
+        Examples:
+          peekaboo see --path ~/screenshot.png    # Save to specific location
+          peekaboo see --save                     # Save to configured default
+          peekaboo see                            # No save, internal only
+
+        Configure in ~/.peekaboo/config.json:
+          { "defaults": { "savePath": "~/Desktop", "screenshotRetentionDays": 3 } }
+
+        This message will not be shown again.
+        ---
+
+        """)
+
+        // Create flag file to prevent showing again
+        try? FileManager.default.createFile(atPath: noticeFlagPath, contents: nil)
+    }
+
+    /// Clean up old screenshot files from user save folder and internal snapshot folders
+    private func cleanupOldScreenshots(retentionDays: Int) {
+        let cutoffDate = Date().addingTimeInterval(-Double(retentionDays) * 24 * 60 * 60)
+        let logger = self.logger
+
+        // Cleanup 1: User save folder (defaults.savePath, default ~/Desktop)
+        let userSavePath = ConfigurationManager.shared.getDefaultSavePath(cliValue: nil)
+        cleanupImageFilesInFolder(userSavePath, cutoffDate: cutoffDate, logger: logger)
+
+        // Cleanup 2: Internal snapshot folders (image files only, NOT directories)
+        let snapshotStoragePath = self.services.snapshots.getSnapshotStoragePath()
+        cleanupImageFilesInSnapshotFolders(snapshotStoragePath, cutoffDate: cutoffDate, logger: logger)
+    }
+
+    private func cleanupImageFilesInFolder(_ path: String, cutoffDate: Date, logger: Logger) {
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: path) else { return }
+        let retentionDays = Int((-cutoffDate.timeIntervalSinceNow) / (24 * 60 * 60))
+
+        for file in files {
+            // Only clean PNG image files
+            guard file.hasSuffix(".png") || file.hasSuffix(".jpg") || file.hasSuffix(".jpeg") else {
+                continue
+            }
+
+            let filePath = (path as NSString).appendingPathComponent(file)
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: filePath),
+                  let modificationDate = attrs[.modificationDate] as? Date,
+                  modificationDate < cutoffDate else {
+                continue
+            }
+
+            try? FileManager.default.removeItem(atPath: filePath)
+            logger.debug("Cleaned up old image: \(file) (older than \(retentionDays) days)")
+        }
+    }
+
+    private func cleanupImageFilesInSnapshotFolders(_ snapshotStoragePath: String, cutoffDate: Date, logger: Logger) {
+        // Get all snapshot directories
+        guard let snapshotDirs = try? FileManager.default.contentsOfDirectory(atPath: snapshotStoragePath) else {
+            return
+        }
+
+        for snapshotDir in snapshotDirs {
+            let dirPath = (snapshotStoragePath as NSString).appendingPathComponent(snapshotDir)
+
+            // Look for image files inside each snapshot directory
+            guard let files = try? FileManager.default.contentsOfDirectory(atPath: dirPath) else {
+                continue
+            }
+
+            for file in files {
+                // Only clean image files (raw.png, annotated.png, etc.), NOT the directory itself
+                guard file.hasSuffix(".png") || file.hasSuffix(".jpg") || file.hasSuffix(".jpeg") else {
+                    continue
+                }
+
+                let filePath = (dirPath as NSString).appendingPathComponent(file)
+                guard let attrs = try? FileManager.default.attributesOfItem(atPath: filePath),
+                      let modificationDate = attrs[.modificationDate] as? Date,
+                      modificationDate < cutoffDate else {
+                    continue
+                }
+
+                try? FileManager.default.removeItem(atPath: filePath)
+                logger.debug("Cleaned up old snapshot image: \(snapshotDir)/\(file)")
+            }
+
+            // Note: Do NOT delete the snapshot directory itself, only the image files inside
+        }
+    }
 }
 
 @MainActor
@@ -842,6 +967,10 @@ extension SeeCommand: CommanderBindableCommand {
         self.analyze = values.singleOption("analyze")
         self.noWebFocus = values.flag("noWebFocus")
         self.menubar = values.flag("menubar")
+        self.save = values.flag("save")
+        if let retainDays: Int = try values.decodeOption("retainDays", as: Int.self) {
+            self.retainDays = retainDays
+        }
     }
 }
 

@@ -62,17 +62,20 @@ public struct Configuration: Codable {
     /// allowing users to customize their preferred capture behavior.
     public struct DefaultsConfig: Codable {
         public var savePath: String?
+        public var screenshotRetentionDays: Int?
         public var imageFormat: String?
         public var captureMode: String?
         public var captureFocus: String?
 
         public init(
             savePath: String? = nil,
+            screenshotRetentionDays: Int? = nil,
             imageFormat: String? = nil,
             captureMode: String? = nil,
             captureFocus: String? = nil)
         {
             self.savePath = savePath
+            self.screenshotRetentionDays = screenshotRetentionDays
             self.imageFormat = imageFormat
             self.captureMode = captureMode
             self.captureFocus = captureFocus

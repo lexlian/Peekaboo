@@ -6,12 +6,20 @@ import PeekabooFoundation
 
 @MainActor
 extension SeeCommand {
-    func saveScreenshot(_ imageData: Data) throws -> String {
+    /// Save screenshot only if user explicitly requested it via --path or --save flag
+    func saveScreenshot(_ imageData: Data, explicitSave: Bool) throws -> String? {
+        // If no explicit save requested, return nil (no user-facing screenshot)
+        guard explicitSave else {
+            self.logger.verbose("No explicit save requested, skipping user-facing screenshot")
+            return nil
+        }
+        
         let outputPath: String
 
-        if let providedPath = path {
+        if let providedPath = self.path {
             outputPath = NSString(string: providedPath).expandingTildeInPath
         } else {
+            // Use configured default save path (defaults.savePath or ~/Desktop)
             let timestamp = Date().timeIntervalSince1970
             let filename = "peekaboo_see_\(Int(timestamp)).png"
             let defaultPath = ConfigurationManager.shared.getDefaultSavePath(cliValue: nil)
@@ -75,7 +83,8 @@ extension SeeCommand {
     // swiftlint:disable function_body_length
     func generateAnnotatedScreenshot(
         snapshotId: String,
-        originalPath: String
+        originalPath: String,
+        userRequestedPath: String?
     ) async throws -> String {
         guard let detectionResult = try await self.services.snapshots.getDetectionResult(snapshotId: snapshotId)
         else {
@@ -83,7 +92,17 @@ extension SeeCommand {
             return originalPath
         }
 
-        let annotatedPath = (originalPath as NSString).deletingPathExtension + "_annotated.png"
+        // Determine annotated path: if user provided --path, use same directory with _annotated suffix
+        // Otherwise use config default save path
+        let annotatedPath: String
+        if let userPath = userRequestedPath {
+            annotatedPath = (userPath as NSString).deletingPathExtension + "_annotated.png"
+        } else {
+            let timestamp = Date().timeIntervalSince1970
+            let filename = "peekaboo_see_\(Int(timestamp))_annotated.png"
+            let defaultPath = ConfigurationManager.shared.getDefaultSavePath(cliValue: nil)
+            annotatedPath = (defaultPath as NSString).appendingPathComponent(filename)
+        }
 
         guard let nsImage = NSImage(contentsOfFile: originalPath) else {
             throw CaptureError.fileIOError("Failed to load image from \(originalPath)")

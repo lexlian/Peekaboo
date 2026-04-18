@@ -90,6 +90,12 @@ final class ConfigurationManager: @unchecked Sendable {
         self.coreManager.getDefaultSavePath(cliValue: cliValue)
     }
 
+    /// Get screenshot retention days with proper precedence
+    func getScreenshotRetentionDays(cliValue: Int? = nil) -> Int {
+        // Get screenshot retention days with proper precedence
+        self.coreManager.getScreenshotRetentionDays(cliValue: cliValue)
+    }
+
     /// Get log level with proper precedence
     func getLogLevel() -> String {
         // Get log level with proper precedence

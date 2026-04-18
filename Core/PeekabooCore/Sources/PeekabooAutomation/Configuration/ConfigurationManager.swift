@@ -489,6 +489,16 @@ public final class ConfigurationManager: @unchecked Sendable {
         return NSString(string: path).expandingTildeInPath
     }
 
+    /// Get screenshot retention days with proper precedence
+    public func getScreenshotRetentionDays(cliValue: Int? = nil) -> Int {
+        // Get screenshot retention days with proper precedence
+        self.getValue(
+            cliValue: cliValue,
+            envVar: nil,
+            configValue: self.configuration?.defaults?.screenshotRetentionDays,
+            defaultValue: 3)
+    }
+
     /// Get log level with proper precedence
     public func getLogLevel() -> String {
         // Get log level with proper precedence
